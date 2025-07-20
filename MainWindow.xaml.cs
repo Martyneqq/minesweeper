@@ -20,8 +20,8 @@ namespace minesweeper
     public partial class MainWindow : Window
     {
         private bool gameOver = false;
-        private CellType[,] board;
-        private int numberOfMines = 50;
+        private int[,] board;
+        private int numberOfMines = 100;
         private int rows = 20;
         private int cols = 20;
         private int[,] adjacentFields =
@@ -32,11 +32,13 @@ namespace minesweeper
         };
         public MainWindow()
         {
-            board = new CellType[rows, cols];
+            board = new int[rows, cols];
 
             InitializeComponent();
             CreateGrid(rows, cols);
             CreateField(numberOfMines);
+
+            
         }
 
         void CreateGrid(int rows, int cols)
@@ -89,9 +91,9 @@ namespace minesweeper
             {
                 int mine_row = r.Next(rows);
                 int mine_col = r.Next(cols);
-                if (board[mine_row, mine_col] != CellType.MINE)
+                if (board[mine_row, mine_col] != -1)
                 {
-                    board[mine_row, mine_col] = CellType.MINE;
+                    board[mine_row, mine_col] = -1;
                     placed++;
                 }
             }
@@ -100,12 +102,12 @@ namespace minesweeper
             {
                 for (int j = 0; j < cols; j++)
                 {
-                    if (board[i, j] == CellType.MINE)
+                    if (board[i, j] == -1)
                     {
                         continue;
                     }
 
-                    CellType sum = 0;
+                    int sum = 0;
 
                     for (int k = 0; k < adjacentFields.GetLength(0); k++)
                     {
@@ -113,7 +115,7 @@ namespace minesweeper
                         int nj = j + adjacentFields[k, 1];
                         if (ni >= 0 && ni < rows && nj >= 0 && nj < cols)
                         {
-                            if (board[ni, nj] == CellType.MINE)
+                            if (board[ni, nj] == -1)
                                 sum++;
                         }
                     }
@@ -125,10 +127,10 @@ namespace minesweeper
         {
             switch (board[x, y])
             {
-                case CellType.MINE:
-                    RevealAllMines();
+                case -1:
+                    RevealAllMines(x, y);
                     break;
-                case CellType.EMPTY:
+                case 0:
                     btn.Content = "0";
                     RevealFields(x, y);
 
@@ -163,7 +165,7 @@ namespace minesweeper
                     {
                         int buttonIndex = ni * cols + nj;
                         Button neighborButton = (Button)GameGrid.Children[buttonIndex];
-                        if (neighborButton.IsEnabled && board[ni, nj] != CellType.MINE)
+                        if (neighborButton.IsEnabled && board[ni, nj] != -1)
                         {
                             queue.Enqueue((ni, nj));
                         }
@@ -176,39 +178,46 @@ namespace minesweeper
             int buttonIndex = x * cols + y;
             Button btn = (Button)GameGrid.Children[buttonIndex];
             if (board[x, y] == 0)
-                btn.Content = "0";
+                btn.Content = "";
             else
                 btn.Content = board[x, y];
 
             btn.IsEnabled = false;
         }
-        private void RevealAllMines()
+        private async void RevealAllMines(int x, int y)
         {
-            gameOver = true;
+            //gameOver = true;
 
-            Thread th = new Thread(() =>
+            Queue<(int, int)> queue = new Queue<(int, int)>();
+            queue.Enqueue((x, y));
+
+            // BFS
+            while (queue.Count > 0)
             {
-                for (int i = 0; i < rows; i++)
-                {
-                    for (int j = 0; j < cols; j++)
-                    {
-                        if (board[i, j] == CellType.MINE)
-                        {
-                            int buttonIndex = i * cols + j;
+                var (cx, cy) = queue.Dequeue();
 
-                            Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                Button btn = (Button)GameGrid.Children[buttonIndex];
-                                btn.IsEnabled = false;
-                                btn.Content = "💣";
-                            });
-                            Thread.Sleep(50);
+                RevealCell(cx, cy);
+                await Task.Delay(10);
+
+                if (board[cx, cy] != -1)
+                {
+                    continue;
+                }
+                for (int k = 0; k < adjacentFields.GetLength(0); k++)
+                {
+                    int ni = cx + adjacentFields[k, 0];
+                    int nj = cy + adjacentFields[k, 1];
+                    if (ni >= 0 && ni < rows && nj >= 0 && nj < cols)
+                    {
+                        int buttonIndex = ni * cols + nj;
+                        Button neighborButton = (Button)GameGrid.Children[buttonIndex];
+                        if (neighborButton.IsEnabled && board[ni, nj] == -1)
+                        {
+                            queue.Enqueue((ni, nj));
                         }
                     }
                 }
-            });
-            th.Start();
-            th.Join();
+            }
         }
     }
 }

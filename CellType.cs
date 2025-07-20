@@ -8,8 +8,7 @@ namespace minesweeper
 {
     enum CellType
     {
-        MINE,
-        EMPTY,
-        SCORE
+        MINE = -1,
+        EMPTY = 0
     }
 }
