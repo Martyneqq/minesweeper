@@ -6,9 +6,7 @@ using System.Threading.Tasks;
 
 namespace minesweeper
 {
-    enum CellType
+    internal class AtomBombCell
     {
-        MINE = -1,
-        EMPTY = 0
     }
 }

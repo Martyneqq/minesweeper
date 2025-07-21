@@ -1,0 +1,23 @@
+﻿<Window x:Class="minesweeper.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:minesweeper"
+        mc:Ignorable="d"
+        Title="MINESWEEPER" Height="720" Width="1280" ResizeMode="NoResize">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <UniformGrid x:Name="ScoreGrid" Margin="20, 0, 20, 0" Rows="1" Columns="3" Height="30" Grid.Row="0">
+            <Label Name="LabelScore" Width="90" FontSize="16" />
+            <Label Name="LabelRowCol" Width="90" FontSize="16" />
+            <Label Width="90" FontSize="16" />
+        </UniformGrid>
+        <ScrollViewer Grid.Row="1" Margin="20" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+            <UniformGrid x:Name="GameGrid" Rows="20" Columns="20"/>
+        </ScrollViewer>
+    </Grid>
+</Window>
