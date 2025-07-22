@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 
 namespace minesweeper
 {
-    public class ScoreHolder
+    public class Score
     {
-        public int Value;
+        public static int Value;
     }
 }

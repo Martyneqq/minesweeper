@@ -13,6 +13,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using static System.Formats.Asn1.AsnWriter;
 
 namespace minesweeper
 {
@@ -40,38 +41,41 @@ namespace minesweeper
             { -2, -2 }, { -1, -2 }, { 0, -2 }, { 1, -2 }, { 2, -2 }
         };
 
-        private ScoreHolder scoreHolder = new ScoreHolder();
+        private GameBoard gameBoard;
+        private GameSaver gameSaver;
+
         public MainWindow()
         {
             InitializeComponent();
 
             board = new int[GameGrid.Rows, GameGrid.Columns];
-            scoreHolder.Value = 0;
-            LabelScore.Content = "Score: " + scoreHolder.Value;
 
-            CreateGrid();
-            CreateField(numberOfMines);
-        }
+            gameBoard = new GameBoard(board, adjacentFields, GameGrid, Cell_Click, Cell_RightClick, LabelRowCol, LabelScore);
+            gameSaver = new GameSaver(gameBoard);
 
-        void CreateGrid()
-        {
-            for (int i = 0; i < GameGrid.Rows; i++)
+            if (gameSaver.SaveExists())
             {
-                for (int j = 0; j < GameGrid.Columns; j++)
+                var result = MessageBox.Show("Load previous game?", "Load Game",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
                 {
-                    Button button = new Button();
-                    button.Content = "";
-                    button.FontSize = 16;
-                    button.Tag = (i, j);
-                    button.Click += Cell_Click;
-                    button.MouseRightButtonUp += Cell_RightClick;
-
-                    GameGrid.Children.Add(button);
-
-                    LabelRowCol.Content = GameGrid.Rows + "x" + GameGrid.Columns;
+                    gameSaver.LoadGame();
                 }
             }
+
+            Score.Value = 0;
+            LabelScore.Content = "Score: " + Score.Value;
+
+            gameBoard.CreateGrid();
+            gameBoard.CreateField(numberOfMines);
         }
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            gameSaver.SaveGame();
+            base.OnClosing(e);
+        }
+
         private void Cell_Click(object sender, RoutedEventArgs e)
         {
             if (gameOver) return;
@@ -83,18 +87,18 @@ namespace minesweeper
                 switch (board[r, c])
                 {
                     case -1:
-                        PropagateMineCell(r, c);
+                        gameBoard.PropagateMineCell(r, c);
                         break;
                     case 0:
                         btn.Content = "0";
-                        PropagateNormalCell(r, c);
+                        gameBoard.PropagateNormalCell(r, c);
                         break;
                     default:
-                        RevealNormalCell(r, c);
+                        gameBoard.RevealNormalCell(r, c);
                         break;
                 }
 
-        btn.IsEnabled = false;
+            btn.IsEnabled = false;
             }
         }
         private void Cell_RightClick(object sender, MouseButtonEventArgs e)
@@ -105,190 +109,6 @@ namespace minesweeper
             {
                 btn.Content = btn.Content?.ToString() == "🚩" ? "" : "🚩";
             }
-        }
-        private void CreateField(int numberOfMines)
-        {
-            Random r = new Random();
-            int placed = 0;
-            while (placed < numberOfMines)
-            {
-                int mine_row = r.Next(GameGrid.Rows);
-                int mine_col = r.Next(GameGrid.Columns);
-                if (board[mine_row, mine_col] != (int)CellType.MINE)
-                {
-                    board[mine_row, mine_col] = (int)CellType.MINE;
-                    placed++;
-                }
-            }
-
-            for (int i = 0; i < GameGrid.Rows; i++)
-            {
-                for (int j = 0; j < GameGrid.Columns; j++)
-                {
-                    if (board[i, j] == (int)CellType.MINE)
-                    {
-                        continue;
-                    }
-
-                    int sum = 0;
-
-                    for (int k = 0; k < adjacentFields.GetLength(0); k++)
-                    {
-                        int ni = i + adjacentFields[k, 0];
-                        int nj = j + adjacentFields[k, 1];
-                        if (ni >= 0 && ni < GameGrid.Rows && nj >= 0 && nj < GameGrid.Columns)
-                        {
-                            if (board[ni, nj] == (int)CellType.MINE)
-                                sum++;
-                        }
-                    }
-                    board[i, j] = sum;
-                }
-            }
-        }
-        public async void PropagateNormalCell(int x, int y)
-        {
-            Queue<(int, int)> queue = new Queue<(int, int)>();
-            HashSet<(int, int)> visited = new HashSet<(int, int)>();
-            queue.Enqueue((x, y));
-            visited.Add((x, y));
-
-            // BFS
-            while (queue.Count > 0)
-            {
-                var (cx, cy) = queue.Dequeue();
-
-                RevealNormalCell(cx, cy);
-                await Task.Delay(5);
-
-                if (board[cx, cy] != (int)CellType.EMPTY)
-                {
-                    continue;
-                }
-                for (int k = 0; k < adjacentFields.GetLength(0); k++)
-                {
-                    int ni = cx + adjacentFields[k, 0];
-                    int nj = cy + adjacentFields[k, 1];
-                    if (ni >= 0 && ni < GameGrid.Rows && nj >= 0 && nj < GameGrid.Columns)
-                    {
-                        if (!visited.Contains((ni, nj)) && board[ni, nj] != (int)CellType.MINE)
-                        {
-                            int buttonIndex = ni * GameGrid.Columns + nj;
-                            Button neighborButton = (Button)GameGrid.Children[buttonIndex];
-
-                            if (neighborButton.IsEnabled)
-                            {
-                                queue.Enqueue((ni, nj));
-                                visited.Add((ni, nj));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        public void RevealNormalCell(int x, int y)
-        {
-            int buttonIndex = x * GameGrid.Columns + y;
-            Button btn = (Button)GameGrid.Children[buttonIndex];
-            if (board[x, y] == (int)CellType.EMPTY)
-            {
-                btn.Content = "";
-            }
-            else
-            {
-                btn.Content = board[x, y];
-                DeductScoreForExplosion(board[x, y]);
-            }
-
-            btn.IsEnabled = false;
-        }
-        public async void PropagateMineCell(int x, int y)
-        {
-            //gameOver = true;
-
-            Queue<(int, int)> queue = new Queue<(int, int)>();
-            HashSet<(int, int)> visited = new HashSet<(int, int)>();
-            queue.Enqueue((x, y));
-            visited.Add((x, y));
-
-            // BFS
-            while (queue.Count > 0)
-            {
-                var (cx, cy) = queue.Dequeue();
-
-                RevealMineCell(cx, cy);
-                await Task.Delay(5);
-
-                if (board[cx, cy] != (int)CellType.MINE)
-                {
-                    continue;
-                }
-                for (int k = 0; k < adjacentFields.GetLength(0); k++)
-                {
-                    int ni = cx + adjacentFields[k, 0];
-                    int nj = cy + adjacentFields[k, 1];
-                    if (ni >= 0 && ni < GameGrid.Rows && nj >= 0 && nj < GameGrid.Columns)
-                    {
-                        int buttonIndex = ni * GameGrid.Columns + nj;
-                        Button neighborButton = (Button)GameGrid.Children[buttonIndex];
-
-                        if (!visited.Contains((ni, nj)))
-                        {
-                            if (board[ni, nj] == (int)CellType.MINE)
-                            {
-                                queue.Enqueue((ni, nj));
-                                visited.Add((ni, nj));
-                            }
-                            else if (board[ni, nj] == (int)CellType.ATOM_BOMB)
-                            {
-                                queue.Enqueue((ni, nj));
-                                visited.Add((ni, nj));
-                            }
-                            else
-                            {
-                                neighborButton.Content = "X";
-                                neighborButton.IsEnabled = false;
-
-                                DeductScoreForExplosion(board[ni, nj], false); // TEST
-                                visited.Add((ni, nj));
-                            }
-                        }
-
-                    }
-                }
-            }
-        }
-        public void RevealMineCell(int x, int y)
-        {
-            int buttonIndex = x * GameGrid.Columns + y;
-            Button btn = (Button)GameGrid.Children[buttonIndex];
-
-            if (!btn.IsEnabled) return;
-
-            DeductScoreForExplosion(board[x, y]);
-
-            if (board[x, y] == (int)CellType.MINE)
-            {
-                btn.Content = "💣";
-            }
-            else if (board[x, y] == (int)CellType.ATOM_BOMB)
-            {
-                btn.Content = "☢️";
-            }
-
-
-            btn.IsEnabled = false;
-        }
-        private void DeductScoreForExplosion(int cellValue, bool increase = true)
-        {
-            if (increase) {
-                scoreHolder.Value += cellValue;
-            }
-            else {
-                scoreHolder.Value -= cellValue;
-            }
-
-            LabelScore.Content = "Score: " + scoreHolder.Value;
         }
     }
 }

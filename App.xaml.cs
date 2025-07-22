@@ -9,6 +9,7 @@ namespace minesweeper
     /// </summary>
     public partial class App : Application
     {
+
     }
 
 }
