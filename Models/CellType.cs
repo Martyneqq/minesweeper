@@ -8,8 +8,9 @@ namespace minesweeper
 {
     public enum CellType
     {
-        ATOM_BOMB = -10,
+        EMPTY = 0,
         MINE = -1,
-        EMPTY = 0
+        BOOM = -2,
+        ATOM = -5
     }
 }

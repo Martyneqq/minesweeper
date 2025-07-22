@@ -23,7 +23,7 @@ namespace minesweeper
     public partial class MainWindow : Window
     {
         private bool gameOver = false;
-        private int[,] board;
+        private Cell[,] board;
         private int numberOfMines = 50;
         private int numberOfAtomBombs = 0;
         private int[,] adjacentFields =
@@ -48,10 +48,13 @@ namespace minesweeper
         {
             InitializeComponent();
 
-            board = new int[GameGrid.Rows, GameGrid.Columns];
+            board = new Cell[GameGrid.Rows, GameGrid.Columns];
 
             gameBoard = new GameBoard(board, adjacentFields, GameGrid, Cell_Click, Cell_RightClick, LabelRowCol, LabelScore);
-            gameSaver = new GameSaver(gameBoard);
+            gameSaver = new GameSaver(gameBoard, LabelScore);
+
+            gameBoard.CreateGrid();
+            gameBoard.CreateEmptyBoard();
 
             if (gameSaver.SaveExists())
             {
@@ -61,14 +64,17 @@ namespace minesweeper
                 if (result == MessageBoxResult.Yes)
                 {
                     gameSaver.LoadGame();
+                    gameBoard.RestoreVisitedState();
+                }
+                else
+                {
+                    gameBoard.CreateField(numberOfMines);
                 }
             }
-
-            Score.Value = 0;
-            LabelScore.Content = "Score: " + Score.Value;
-
-            gameBoard.CreateGrid();
-            gameBoard.CreateField(numberOfMines);
+            else
+            {
+                gameBoard.CreateField(numberOfMines);
+            }
         }
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
@@ -83,24 +89,29 @@ namespace minesweeper
             if (sender is Button btn)
             {
                 var (r, c) = ((int, int))btn.Tag;
+                var cell = gameBoard.Board[r, c];
 
-                switch (board[r, c])
+                if (cell.IsMine)
                 {
-                    case -1:
-                        gameBoard.PropagateMineCell(r, c);
-                        break;
-                    case 0:
-                        btn.Content = "0";
-                        gameBoard.PropagateNormalCell(r, c);
-                        break;
-                    default:
-                        gameBoard.RevealNormalCell(r, c);
-                        break;
+                    gameBoard.Propagate(r, c, isExplosion: true);
+                    return;
                 }
 
-            btn.IsEnabled = false;
+                if (cell.Type == CellType.ATOM)
+                {
+                    return;
+                }
+
+                if (cell.AdjacentMines == 0)
+                {
+                    gameBoard.Propagate(r, c, isExplosion: false);
+                    return;
+                }
+
+                gameBoard.RevealCellGameplay(r, c);
             }
         }
+
         private void Cell_RightClick(object sender, MouseButtonEventArgs e)
         {
             if (gameOver) return;

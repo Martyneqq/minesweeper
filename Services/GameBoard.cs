@@ -6,13 +6,14 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 
 namespace minesweeper
 {
     public class GameBoard
     {
-        private int[,] _board;
-        public int[,] Board => _board;
+        private Cell[,] _board;
+        public Cell[,] Board => _board;
         private int[,] _adjacentFields;
         private UniformGrid _gameGrid;
         private System.Windows.RoutedEventHandler _cellClick;
@@ -20,7 +21,7 @@ namespace minesweeper
         private Label _labelRowCol;
         private Label _labelScore;
 
-        public GameBoard(int[,] board, int[,] adjacentFields, UniformGrid gameGrid, System.Windows.RoutedEventHandler cellClick, System.Windows.Input.MouseButtonEventHandler cellRightClick, Label labelRowCol, Label labelScore) { 
+        public GameBoard(Cell[,] board, int[,] adjacentFields, UniformGrid gameGrid, System.Windows.RoutedEventHandler cellClick, System.Windows.Input.MouseButtonEventHandler cellRightClick, Label labelRowCol, Label labelScore) { 
             _board = board;
             _adjacentFields = adjacentFields;
             _gameGrid = gameGrid;
@@ -29,6 +30,18 @@ namespace minesweeper
             _labelRowCol = labelRowCol;
             _labelScore = labelScore;
         }
+        public void CreateEmptyBoard()
+        {
+            _board = new Cell[_gameGrid.Rows, _gameGrid.Columns];
+            for (int i = 0; i < _gameGrid.Rows; i++)
+            {
+                for (int j = 0; j < _gameGrid.Columns; j++)
+                {
+                    _board[i, j] = new Cell();
+                }
+            }
+        }
+
         public void CreateGrid()
         {
             for (int i = 0; i < _gameGrid.Rows; i++)
@@ -56,9 +69,9 @@ namespace minesweeper
             {
                 int mine_row = r.Next(_gameGrid.Rows);
                 int mine_col = r.Next(_gameGrid.Columns);
-                if (_board[mine_row, mine_col] != (int)CellType.MINE)
+                if (!_board[mine_row, mine_col].IsMine)
                 {
-                    _board[mine_row, mine_col] = (int)CellType.MINE;
+                    _board[mine_row, mine_col].Type = CellType.MINE;
                     placed++;
                 }
             }
@@ -67,7 +80,7 @@ namespace minesweeper
             {
                 for (int j = 0; j < _gameGrid.Columns; j++)
                 {
-                    if (_board[i, j] == (int)CellType.MINE)
+                    if (_board[i, j].IsMine)
                     {
                         continue;
                     }
@@ -80,161 +93,168 @@ namespace minesweeper
                         int nj = j + _adjacentFields[k, 1];
                         if (ni >= 0 && ni < _gameGrid.Rows && nj >= 0 && nj < _gameGrid.Columns)
                         {
-                            if (_board[ni, nj] == (int)CellType.MINE)
+                            if (_board[ni, nj].IsMine)
                                 sum++;
                         }
                     }
-                    _board[i, j] = sum;
+                    _board[i, j].AdjacentMines = sum;
                 }
             }
         }
-        public async void PropagateNormalCell(int x, int y)
+        public async void Propagate(int startX, int startY, bool isExplosion)
         {
             Queue<(int, int)> queue = new Queue<(int, int)>();
-            HashSet<(int, int)> visited = new HashSet<(int, int)>();
-            queue.Enqueue((x, y));
-            visited.Add((x, y));
+            queue.Enqueue((startX, startY));
+            _board[startX, startY].IsVisited = true;
 
-            // BFS
             while (queue.Count > 0)
             {
                 var (cx, cy) = queue.Dequeue();
 
-                RevealNormalCell(cx, cy);
-                await Task.Delay(5);
+                // Always reveal the current cell
+                RevealCellGameplay(cx, cy);
+                await Task.Delay(30); // Small delay for explosion animation effect
 
-                if (_board[cx, cy] != (int)CellType.EMPTY)
+                if (!isExplosion)
                 {
-                    continue;
+                    // Normal flood-fill stops at numbered cells
+                    if (_board[cx, cy].AdjacentMines > 0)
+                        continue;
                 }
+
+                // EXPLOSION LOGIC:
+                if (isExplosion)
+                {
+                    // Non-mine cells become BOOM (X)
+                    if (!_board[cx, cy].IsMine)
+                        _board[cx, cy].Type = CellType.BOOM;
+                }
+
+                // Explore neighbors
                 for (int k = 0; k < _adjacentFields.GetLength(0); k++)
                 {
                     int ni = cx + _adjacentFields[k, 0];
                     int nj = cy + _adjacentFields[k, 1];
-                    if (ni >= 0 && ni < _gameGrid.Rows && nj >= 0 && nj < _gameGrid.Columns)
-                    {
-                        if (!visited.Contains((ni, nj)) && _board[ni, nj] != (int)CellType.MINE)
-                        {
-                            int buttonIndex = ni * _gameGrid.Columns + nj;
-                            Button neighborButton = (Button)_gameGrid.Children[buttonIndex];
 
-                            if (neighborButton.IsEnabled)
-                            {
-                                queue.Enqueue((ni, nj));
-                                visited.Add((ni, nj));
-                            }
+                    if (ni < 0 || ni >= _gameGrid.Rows || nj < 0 || nj >= _gameGrid.Columns)
+                        continue;
+
+                    if (_board[ni, nj].IsVisited) continue;
+
+                    _board[ni, nj].IsVisited = true;
+
+                    if (!isExplosion)
+                    {
+                        // Normal click flood-fill: only enqueue empty cells
+                        if (!_board[ni, nj].IsMine && _board[ni, nj].AdjacentMines == 0)
+                            queue.Enqueue((ni, nj));
+                    }
+                    else
+                    {
+                        // Explosion BFS:
+                        if (_board[ni, nj].IsMine)
+                        {
+                            // Chain explosion: enqueue this mine so it also explodes
+                            queue.Enqueue((ni, nj));
+                        }
+                        else
+                        {
+                            // Mark as BOOM but do NOT enqueue further
+                            _board[ni, nj].Type = CellType.BOOM;
                         }
                     }
+
+                    RevealCellGameplay(ni, nj);
                 }
             }
         }
-        public void RevealNormalCell(int x, int y)
+
+        private Brush GetNumberColor(int n)
         {
-            int buttonIndex = x * _gameGrid.Columns + y;
-            Button btn = (Button)_gameGrid.Children[buttonIndex];
-            if (_board[x, y] == (int)CellType.EMPTY)
+            return n switch
             {
-                btn.Content = "";
-            }
-            else
-            {
-                btn.Content = _board[x, y];
-                DeductScoreForExplosion(_board[x, y]);
-            }
-
-            btn.IsEnabled = false;
+                1 => Brushes.Blue,
+                2 => Brushes.Green,
+                3 => Brushes.Red,
+                4 => Brushes.DarkBlue,
+                5 => Brushes.DarkRed,
+                6 => Brushes.Turquoise,
+                7 => Brushes.Black,
+                8 => Brushes.Gray,
+                _ => Brushes.Black
+            };
         }
-        public async void PropagateMineCell(int x, int y)
-        {
-            //gameOver = true;
-
-            Queue<(int, int)> queue = new Queue<(int, int)>();
-            HashSet<(int, int)> visited = new HashSet<(int, int)>();
-            queue.Enqueue((x, y));
-            visited.Add((x, y));
-
-            // BFS
-            while (queue.Count > 0)
-            {
-                var (cx, cy) = queue.Dequeue();
-
-                RevealMineCell(cx, cy);
-                await Task.Delay(5);
-
-                if (_board[cx, cy] != (int)CellType.MINE)
-                {
-                    continue;
-                }
-                for (int k = 0; k < _adjacentFields.GetLength(0); k++)
-                {
-                    int ni = cx + _adjacentFields[k, 0];
-                    int nj = cy + _adjacentFields[k, 1];
-                    if (ni >= 0 && ni < _gameGrid.Rows && nj >= 0 && nj < _gameGrid.Columns)
-                    {
-                        int buttonIndex = ni * _gameGrid.Columns + nj;
-                        Button neighborButton = (Button)_gameGrid.Children[buttonIndex];
-
-                        if (!visited.Contains((ni, nj)))
-                        {
-                            if (_board[ni, nj] == (int)CellType.MINE)
-                            {
-                                queue.Enqueue((ni, nj));
-                                visited.Add((ni, nj));
-                            }
-                            else if (_board[ni, nj] == (int)CellType.ATOM_BOMB)
-                            {
-                                queue.Enqueue((ni, nj));
-                                visited.Add((ni, nj));
-                            }
-                            else
-                            {
-                                neighborButton.Content = "X";
-                                neighborButton.IsEnabled = false;
-
-                                DeductScoreForExplosion(_board[ni, nj], false); // TEST
-                                visited.Add((ni, nj));
-                            }
-                        }
-
-                    }
-                }
-            }
-        }
-        public void RevealMineCell(int x, int y)
+        private void RevealCellForUI(int x, int y)
         {
             int buttonIndex = x * _gameGrid.Columns + y;
             Button btn = (Button)_gameGrid.Children[buttonIndex];
 
-            if (!btn.IsEnabled) return;
+            // Show correct symbol/number
 
-            DeductScoreForExplosion(_board[x, y]);
-
-            if (_board[x, y] == (int)CellType.MINE)
+            if (_board[x, y].IsMine)
             {
                 btn.Content = "💣";
             }
-            else if (_board[x, y] == (int)CellType.ATOM_BOMB)
+            else if (_board[x, y].Type == CellType.BOOM)
+            {
+                btn.Content = "X";
+            }
+            else if (_board[x, y].Type == CellType.ATOM)
             {
                 btn.Content = "☢️";
             }
-
-
-            btn.IsEnabled = false;
-        }
-        public void DeductScoreForExplosion(int cellValue, bool increase = true)
-        {
-            if (increase)
+            else if (_board[x, y].AdjacentMines > 0)
             {
-                Score.Value += cellValue;
+                btn.Content = _board[x, y].AdjacentMines.ToString();
+                btn.Foreground = GetNumberColor(_board[x, y].AdjacentMines);
             }
             else
             {
-                Score.Value -= cellValue;
+                btn.Content = "";
+            }
+
+            btn.IsEnabled = false;
+            _board[x, y].IsVisited = true;
+        }
+        public void RevealCellGameplay(int x, int y)
+        {
+            var cell = _board[x, y];
+
+            if (cell.IsMine)
+            {
+                Score.Value -= 1;
+            }
+            else if (cell.Type == CellType.BOOM)
+            {
+                Score.Value -= 1;
+            }
+            else if (cell.Type == CellType.ATOM)
+            {
+                Score.Value -= 5;
+            }
+            else if (cell.AdjacentMines > 0)
+            {
+                Score.Value += cell.AdjacentMines;
             }
 
             _labelScore.Content = "Score: " + Score.Value;
+            RevealCellForUI(x, y);
         }
-        public void SetBoard(int[,] newBoard)
+
+        public void RestoreVisitedState()
+        {
+            for (int i = 0; i < _gameGrid.Rows; i++)
+            {
+                for (int j = 0; j < _gameGrid.Columns; j++)
+                {
+                    if (_board[i, j].IsVisited)
+                    {
+                        RevealCellForUI(i, j);
+                    }
+                }
+            }
+        }
+        public void SetBoard(Cell[,] newBoard)
         {
             _board = newBoard;
         }
